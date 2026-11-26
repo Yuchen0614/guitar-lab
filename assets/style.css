@@ -202,6 +202,7 @@ html[data-theme="light"] .hero h1 .grad {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 11px 22px; border-radius: 999px;
   font-size: .95rem; font-weight: 600; line-height: 1.4;
+  white-space: nowrap; flex-shrink: 0;
   border: 1px solid transparent; cursor: pointer;
   transition: transform .2s var(--ease), box-shadow .2s, background .2s, border-color .2s, color .2s;
 }
