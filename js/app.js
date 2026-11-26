@@ -9,6 +9,10 @@
   // def = { navName, render(el, params) }
   window.GL.register = function (id, def) { pages[id] = def; };
 
+  /* ---------- 頁面清理（離開頁面時停 timer/audio） ---------- */
+  var cleanups = [];
+  window.GL.onCleanup = function (fn) { cleanups.push(fn); };
+
   /* ---------- 主題 ---------- */
   var THEME_KEY = 'theme';
   function applyTheme(t) {
@@ -82,6 +86,9 @@
     var def = pages[route];
     var app = document.getElementById('app');
     if (!def) return;
+    // 執行前一頁的清理（停節拍器、斷開 observer 等）
+    cleanups.forEach(function (fn) { try { fn(); } catch (e) { /* noop */ } });
+    cleanups = [];
     app.innerHTML = '';
     def.render(app);
     window.scrollTo(0, 0);
