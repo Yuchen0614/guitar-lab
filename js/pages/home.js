@@ -83,21 +83,30 @@
       svg += '<circle cx="' + x + '" cy="' + y + '" r="5" fill="var(--border-strong)" opacity=".55"/>';
     });
     // 音符點綴：C 和弦（x32010）開放指法，弦序低→高 E A D G B e
-    function fretX(f) { // 第 f 格的中心 x（取相鄰兩條已繪琴格線的中點）
-      var idx = frets.indexOf(f);
-      if (f === 0) return positions[0];
-      if (idx <= 0) return left;
-      return (positions[frets[idx]] + positions[frets[idx - 1]]) / 2;
+    function fretX(f) { // 第 f 格中心 x：介於相鄰兩條已繪琴格線之間線性內插
+      if (f <= 0) return positions[0];
+      var lo = 0, hi = 0;
+      for (var i = 0; i < frets.length; i++) {
+        if (frets[i] <= f) lo = frets[i];
+        if (frets[i] >= f) { hi = frets[i]; break; }
+      }
+      if (hi === lo) return positions[lo];
+      return positions[lo] + (positions[hi] - positions[lo]) * (f - lo) / (hi - lo);
     }
-    var dots = [[1, 3], [2, 2], [3, 0], [4, 1], [5, 0]]; // [弦索引, 琴格]
+    var dots = [[1, 3], [2, 2], [4, 1]]; // 按壓格：[弦索引, 琴格]
     dots.forEach(function (d) {
       var y = top + d[0] * rowGap;
       var x = fretX(d[1]);
       svg += '<circle cx="' + x + '" cy="' + y + '" r="9" fill="var(--accent)"/>';
       svg += '<circle cx="' + x + '" cy="' + y + '" r="13" fill="var(--accent)" opacity=".25"/>';
     });
+    // 開放弦（G、e）：弦枕左側空心圈
+    [3, 5].forEach(function (s) {
+      var y = top + s * rowGap;
+      svg += '<circle cx="' + (positions[0] - 15) + '" cy="' + y + '" r="5.5" fill="none" stroke="var(--accent)" stroke-width="2"/>';
+    });
     // 低音 E 弦悶音記號
-    svg += '<text x="' + (positions[0] - 14) + '" y="' + (top + 4) + '" text-anchor="middle" font-size="13" fill="var(--faint)" font-family="var(--font-mono)">×</text>';
+    svg += '<text x="' + (positions[0] - 15) + '" y="' + (top + 4.5) + '" text-anchor="middle" font-size="13" fill="var(--faint)" font-family="var(--font-mono)">×</text>';
     svg += '</svg>';
     return svg;
   }
