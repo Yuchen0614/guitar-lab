@@ -6,7 +6,7 @@
 
   var AC = window.GLaudio, M = window.GLmusic, SY = window.GLsynth;
   var result = null; // { segs, key, duration, algo }
-  var YTS = GL.store.bind('yt_settings', { endpoint: 'https://api.cobalt.tools/api/json' });
+  var YTS = GL.store.bind('yt_settings', { endpoint: 'https://co.otomir23.me' });
 
   function fmtTime(s) {
     var m = Math.floor(s / 60), ss = Math.floor(s % 60);
@@ -45,7 +45,7 @@
             '<p class="hint">透過公開的 cobalt 相服務抓音訊軌，下載後一樣只在本機分析。若服務暫時不可用，請改用上傳檔案。</p>' +
             '<details class="adv-box"><summary>進階：自訂 cobalt API 位址</summary>' +
               '<input type="url" id="azYtEndpoint" class="text-input" style="margin-top:8px">' +
-              '<p class="hint">預設使用 api.cobalt.tools；你可以填自己部署的執行個體。</p>' +
+              '<p class="hint">預設使用公共實例 co.otomir23.me；若失效可換其他 cobalt 實例或自架（docs.run-an-instance.md）。</p>' +
             '</details>' +
             '<button class="btn btn-primary btn-block" id="azYtGo" style="margin-top:10px">從 YouTube 匯入</button>' +
           '</div>' +
@@ -154,7 +154,7 @@
     var ytEndpoint = document.getElementById('azYtEndpoint');
     ytEndpoint.value = YTS.data.endpoint;
     ytEndpoint.addEventListener('change', function () {
-      YTS.data.endpoint = ytEndpoint.value.trim() || 'https://api.cobalt.tools/api/json';
+      YTS.data.endpoint = ytEndpoint.value.trim() || 'https://co.otomir23.me';
       YTS.save();
     });
 
@@ -173,7 +173,7 @@
       var btn = document.getElementById('azYtGo');
       btn.disabled = true;
       showProgress('向 cobalt 服務請求音訊軌…');
-      fetch(YTS.data.endpoint, {
+      fetch(YTS.data.endpoint + '/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({
