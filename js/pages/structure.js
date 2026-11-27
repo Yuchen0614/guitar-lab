@@ -4,8 +4,8 @@
 (function () {
   'use strict';
 
-  var AC = window.GLaudio, SS = window.GLstructure, R = window.GLrhyme;
-  var YTS = GL.store.bind('yt_settings', { endpoint: 'https://co.otomir23.me' });
+  var AC = window.GLaudio, SS = window.GLstructure, R = window.GLrhyme, YT = window.GLyoutube;
+  var YTS = YT.settings;
   var STS = GL.store.bind('st_settings', { kernelSec: 8, threshold: 0.9 });
   var result = null;
 
@@ -48,7 +48,7 @@
           '<div class="src-pane" id="stYt" hidden>' +
             '<label class="field-label">YouTube 網址</label>' +
             '<input type="url" id="stYtUrl" class="text-input" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false">' +
-            '<p class="hint">與和弦分析共用 cobalt 服務設定。下載後只在本機分析。</p>' +
+            '<p class="hint">與和弦分析共用 cobalt 設定（實例位址 + Api-Key，在「和弦分析」頁的進階設定裡填）。下載後只在本機分析。</p>' +
             '<button class="btn btn-primary btn-block" id="stYtGo" style="margin-top:10px">從 YouTube 匯入</button>' +
           '</div>' +
           '<div class="src-pane" id="stDemo" hidden>' +
@@ -175,33 +175,27 @@
 
     document.getElementById('stYtGo').addEventListener('click', function () {
       var url = document.getElementById('stYtUrl').value.trim();
-      var m = /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/.exec(url);
-      if (!m) { GL.toast('這看起來不是 YouTube 影片網址'); return; }
+      if (!YT.videoId(url)) { GL.toast('這看起來不是 YouTube 影片網址'); return; }
       var btn = this;
       btn.disabled = true;
-      showProgress('向 cobalt 服務請求音訊軌…');
-      fetch(YTS.data.endpoint + '/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ url: url, downloadMode: 'audio', audioFormat: 'mp3', filenameStyle: 'basic' })
-      }).then(function (r) { return r.json(); }).then(function (j) {
-        if (j.status === 'stream' || j.status === 'redirect' || j.status === 'tunnel') {
-          showProgress('下載音訊中…');
-          return fetch(j.url).then(function (resp) {
-            if (!resp.ok) throw new Error('下載失敗（HTTP ' + resp.status + '）');
-            return resp.arrayBuffer();
-          }).then(function (ab) { showProgress('解碼音訊…'); return AC.decodeBytes(ab); });
+      showProgress('向 cobalt 實例請求音訊軌…');
+      YT.getTunnel(url, showProgress).then(function (r) {
+        if (!r.ok) {
+          hideProgress();
+          btn.disabled = false;
+          GL.toast(r.classified.title + '：' + r.classified.msg, 6000);
+          return;
         }
-        if (j.status === 'error' && /auth|login/i.test((j.error || {}).code || '')) {
-          throw new Error('這部影片需要登入/年齡限制，cobalt 抓不到，請改用上傳檔案');
-        }
-        throw new Error((j.error && j.error.code) || 'cobalt 無法處理這個網址');
-      }).then(function (buf) {
-        audioData = buf;
-        hideProgress();
-        btn.disabled = false;
-        setReady('YouTube');
-        GL.toast('已從 YouTube 載入音訊（' + fmtTime(buf.duration) + '）');
+        return YT.downloadAudio(r.url, showProgress).then(function (ab) {
+          showProgress('解碼音訊…');
+          return AC.decodeBytes(ab);
+        }).then(function (buf) {
+          audioData = buf;
+          hideProgress();
+          btn.disabled = false;
+          setReady('YouTube');
+          GL.toast('已從 YouTube 載入音訊（' + fmtTime(buf.duration) + '）');
+        });
       }).catch(function (err) {
         hideProgress();
         btn.disabled = false;
