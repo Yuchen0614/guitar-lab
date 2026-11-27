@@ -1,9 +1,11 @@
-/* 吉他實驗室 — Solo 譜生成（M5）
-   和弦進行編輯 + 難度/BPM/seed → 生成 → ASCII 六線譜 + 試聽 + 匯出 */
+/* 吉他實驗室 — Solo 譜生成（M5 + 歌曲匯入）
+   和弦進行編輯 + 難度/BPM/seed → 生成 → ASCII 六線譜 + 試聽 + 匯出
+   從歌曲匯入：上傳音檔 / YouTube 連結 → 和弦分析 → 帶入進行與調性建議 */
 (function () {
   'use strict';
 
   var M = window.GLmusic, SG = window.GLsolo, TB = window.GLtab, SY = window.GLsynth;
+  var AC = window.GLaudio, YT = window.GLyoutube;
   var SOS = GL.store.bind('solo_settings', {
     keyRoot: 0, scaleId: 'major', difficulty: 'medium',
     barsPerChord: 2, bpm: 90, seed: 42
@@ -51,6 +53,33 @@
           '<div class="btn-row" style="margin-top:8px">' +
             '<button class="btn btn-ghost btn-sm" id="soAddChord">＋ 加和弦</button>' +
             '<button class="btn btn-ghost btn-sm" id="soClearChords">清空</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="panel">' +
+          '<h3 class="panel-title">✨ 從歌曲匯入（可選）</h3>' +
+          '<p class="hint" style="margin-top:0">丟一首歌進來，自動分析和弦與調性，帶入下方進行——再生成 Solo。音檔只在本機解碼。</p>' +
+          '<div class="src-tabs" role="tablist">' +
+            '<button class="chip chip-btn" data-so-src="file" role="tab">📁 上傳檔案</button>' +
+            '<button class="chip chip-btn" data-so-src="yt" role="tab">▶ YouTube 連結</button>' +
+          '</div>' +
+          '<div class="src-pane" id="soFilePane" hidden>' +
+            '<div class="dropzone" id="soDrop" tabindex="0" role="button" aria-label="選擇或拖曳音訊檔案">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>' +
+              '<p><strong>拖曳音訊檔到這裡</strong>，或點擊選擇</p>' +
+              '<p class="hint">MP3 / WAV / M4A / OGG，建議 8 分鐘以內</p>' +
+            '</div>' +
+            '<input type="file" id="soFileInput" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" hidden>' +
+          '</div>' +
+          '<div class="src-pane" id="soYtPane" hidden>' +
+            '<label class="field-label">YouTube 網址</label>' +
+            '<input type="url" id="soYtUrl" class="text-input" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false">' +
+            '<p class="hint">與和弦分析共用 cobalt 設定（實例 + Api-Key，在「和弦分析」頁填）。</p>' +
+            '<button class="btn btn-primary btn-block" id="soYtGo" style="margin-top:10px">從 YouTube 匯入並分析</button>' +
+          '</div>' +
+          '<div class="progress-wrap" id="soImportProg" hidden>' +
+            '<div class="progress-bar"><div class="progress-fill" id="soImportFill"></div></div>' +
+            '<p class="hint" id="soImportText">準備中…</p>' +
           '</div>' +
         '</div>' +
 
@@ -337,6 +366,157 @@
       s.onerror = function () { cb(false); };
       document.head.appendChild(s);
     }
+
+    /* ================= 從歌曲匯入 ================= */
+    var importSrc = 'file';
+    var importTabs = el.querySelectorAll('[data-so-src]');
+    importTabs.forEach(function (t) {
+      t.addEventListener('click', function () {
+        importTabs.forEach(function (x) { x.classList.remove('chip-active'); });
+        t.classList.add('chip-active');
+        importSrc = t.dataset.soSrc;
+        document.getElementById('soFilePane').hidden = importSrc !== 'file';
+        document.getElementById('soYtPane').hidden = importSrc !== 'yt';
+      });
+    });
+
+    function showImport(text, p) {
+      document.getElementById('soImportProg').hidden = false;
+      document.getElementById('soImportText').textContent = text;
+      document.getElementById('soImportFill').style.width = Math.round((p || 0.02) * 100) + '%';
+    }
+    function setImportP(p) { document.getElementById('soImportFill').style.width = Math.round(p * 100) + '%'; }
+    function hideImport() { document.getElementById('soImportProg').hidden = true; }
+
+    /* 分析 → 帶入：把和弦段落壓縮成進行（相鄰同名合併、截斷到前 8 個不同段） */
+    function applyAnalysis(segs, key) {
+      // 1) 壓縮：相鄰同名和弦合併（保留出現順序）
+      var compressed = [];
+      segs.forEach(function (s) {
+        if (compressed.length && compressed[compressed.length - 1].name === s.name) {
+          compressed[compressed.length - 1].count++;
+        } else {
+          compressed.push({ name: s.name, root: s.root, typeId: s.typeId, count: 1 });
+        }
+      });
+      // 2) 取前 16 個段落（約 1-2 分鐘的音樂）
+      compressed = compressed.slice(0, 16);
+      if (!compressed.length) { GL.toast('分析結果沒有可用的和弦'); return; }
+
+      // 3) 帶入進行
+      prog = compressed.map(function (c) {
+        return { root: c.root, typeId: c.typeId };
+      });
+      saveProg();
+      renderProg();
+
+      // 4) 帶入調性建議（信賴度夠高才自動切換）
+      if (key && key.corr >= 0.75) {
+        keySel.value = key.root;
+        SOS.data.keyRoot = key.root;
+        // 大調→大調音階；小調→小調五聲（Solo 常用）
+        if (/小調/.test(key.mode)) {
+          scaleSel.value = 'pentaMin';
+          SOS.data.scaleId = 'pentaMin';
+        } else {
+          scaleSel.value = 'major';
+          SOS.data.scaleId = 'major';
+        }
+        SOS.save();
+      }
+
+      var progText = compressed.slice(0, 8).map(function (c) { return c.name; }).join(' → ');
+      GL.toast('已帶入 ' + compressed.length + ' 個和弦段落' +
+        (key ? '（估計調性：' + key.name + '）' : '') + '——按「生成 Solo」開始', 6000);
+      var el = document.getElementById('soRun');
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return { progName: progText, key: key };
+    }
+
+    /* ---------- 上傳檔案流程 ---------- */
+    var drop = document.getElementById('soDrop');
+    var fileInput = document.getElementById('soFileInput');
+    drop.addEventListener('click', function () { fileInput.click(); });
+    drop.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+    ['dragover', 'dragenter'].forEach(function (ev) {
+      drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('drag'); });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('drag'); });
+    });
+    drop.addEventListener('drop', function (e) {
+      var f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) importFromFile(f);
+    });
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files[0]) importFromFile(fileInput.files[0]);
+    });
+
+    function importFromFile(f) {
+      showImport('解碼 ' + f.name + '…');
+      AC.decodeFile(f).then(function (buf) {
+        showImport('計算 chroma…', 0.3);
+        var mono = AC.toMono(buf);
+        var down = AC.trimSilence(AC.downsample(mono, buf.sampleRate, 22050));
+        var chroma = AC.chromaFrames(down, 22050, { frameSize: 4096, hop: 2048 });
+        setImportP(0.7);
+        document.getElementById('soImportText').textContent = '辨識和弦…';
+        var templates = AC.templates24(false);
+        var probs = AC.templateScores(chroma.frames, templates);
+        var raw = AC.viterbi(probs, templates, 0.6);
+        var path = AC.modeFilter(raw, templates, 2);
+        var segs = AC.segments(path, templates, chroma.frameDur);
+        var key = AC.estimateKey(chroma.frames);
+        setImportP(1);
+        hideImport();
+        applyAnalysis(segs, key);
+      }).catch(function (err) {
+        hideImport();
+        GL.toast('匯入失敗：' + err.message);
+      });
+    }
+
+    /* ---------- YouTube 流程 ---------- */
+    document.getElementById('soYtGo').addEventListener('click', function () {
+      var url = document.getElementById('soYtUrl').value.trim();
+      if (!YT.videoId(url)) { GL.toast('這看起來不是 YouTube 影片網址'); return; }
+      var btn = this;
+      btn.disabled = true;
+      showImport('向 cobalt 實例請求音訊軌…');
+      YT.getTunnel(url, showImport).then(function (r) {
+        if (!r.ok) {
+          hideImport();
+          btn.disabled = false;
+          GL.toast(r.classified.title + '：' + r.classified.msg, 6000);
+          return;
+        }
+        return YT.downloadAudio(r.url, showImport).then(function (ab) {
+          showImport('解碼音訊…', 0.85);
+          return AC.decodeBytes(ab);
+        }).then(function (buf) {
+          showImport('計算 chroma…', 0.9);
+          var mono = AC.toMono(buf);
+          var down = AC.trimSilence(AC.downsample(mono, buf.sampleRate, 22050));
+          var chroma = AC.chromaFrames(down, 22050, { frameSize: 4096, hop: 2048 });
+          setImportP(0.95);
+          document.getElementById('soImportText').textContent = '辨識和弦…';
+          var templates = AC.templates24(false);
+          var probs = AC.templateScores(chroma.frames, templates);
+          var raw = AC.viterbi(probs, templates, 0.6);
+          var path = AC.modeFilter(raw, templates, 2);
+          var segs = AC.segments(path, templates, chroma.frameDur);
+          var key = AC.estimateKey(chroma.frames);
+          setImportP(1);
+          hideImport();
+          btn.disabled = false;
+          applyAnalysis(segs, key);
+        });
+      }).catch(function (err) {
+        hideImport();
+        btn.disabled = false;
+        GL.toast('YouTube 匯入失敗：' + err.message + '（可改用上傳檔案）');
+      });
+    });
 
     GL.onCleanup(function () { stopPlayback(); result = null; });
   }
