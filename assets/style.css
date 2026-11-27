@@ -602,3 +602,32 @@ input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer;
 .ly-letter.none { border-style: dashed; opacity: .5; }
 .ly-text { flex: 1; color: var(--text); line-height: 1.65; }
 .ly-final { font-size: .76rem; color: var(--faint); font-family: var(--font-mono); white-space: nowrap; }
+
+/* ---------- M5 Solo 譜生成 ---------- */
+.preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.prog-editor { display: flex; flex-wrap: wrap; gap: 8px; }
+.prog-cell {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 6px 8px;
+}
+.prog-cell select {
+  background: var(--card); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 6px; font-size: .88rem;
+}
+.prog-del {
+  background: none; border: none; color: var(--faint); cursor: pointer;
+  font-size: 1rem; padding: 2px 4px; line-height: 1;
+}
+.prog-del:hover { color: var(--err); }
+.seed-row { display: flex; gap: 8px; align-items: center; }
+.seed-row .text-input { max-width: 120px; }
+.tab-pre {
+  font-family: var(--font-mono); font-size: .92rem; line-height: 1.45;
+  color: var(--text); overflow-x: auto; margin: 0; padding: 4px 2px;
+  white-space: pre;
+}
+
+.alpha-tab-box { margin-top: 12px; }
+.alpha-tab-box summary { cursor: pointer; color: var(--accent); font-weight: 600; padding: 6px 0; }
+.alpha-tab-wrap { margin-top: 10px; overflow-x: auto; background: var(--bg-soft); border-radius: var(--radius-sm); padding: 10px; min-height: 60px; }
