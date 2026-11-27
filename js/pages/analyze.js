@@ -68,8 +68,8 @@
               '<option value="ext">加七和弦（72 個）</option>' +
             '</select></label>' +
           '</div>' +
-          '<label class="field-label" style="margin-top:14px">Viterbi 連續性強度 <span id="azBiasVal">0.84</span></label>' +
-          '<input type="range" id="azBias" min="0.6" max="0.95" step="0.01" value="0.84">' +
+          '<label class="field-label" style="margin-top:14px">Viterbi 連續性強度 <span id="azBiasVal">0.60</span></label>' +
+          '<input type="range" id="azBias" min="0.3" max="0.9" step="0.01" value="0.60">' +
           '<div class="range-label"><span>0.6 換得多</span><span>0.95 黏得緊</span></div>' +
           '<div class="btn-row" style="margin-top:14px">' +
             '<button class="btn btn-primary" id="azRun" disabled>3 · 開始分析</button>' +
@@ -269,7 +269,7 @@
         .then(function () {
           var mono = AC.toMono(buffer);
           var sr = 22050;
-          var down = AC.downsample(mono, buffer.sampleRate, sr);
+          var down = AC.trimSilence(AC.downsample(mono, buffer.sampleRate, sr));
           setBar(0.1);
           return AC.chromaFrames(down, sr, { frameSize: 4096, hop: 2048 }, function (p) {
             setBar(0.1 + p * 0.55);
@@ -283,7 +283,8 @@
             setTimeout(function () {
               var templates = AC.templates24(ext);
               var probs = AC.templateScores(chroma.frames, templates);
-              var path = algo === 'viterbi' ? AC.viterbi(probs, templates, bias) : AC.argmaxPath(probs, templates);
+              var raw = algo === 'viterbi' ? AC.viterbi(probs, templates, bias) : AC.argmaxPath(probs, templates);
+              var path = AC.modeFilter(raw, templates, 2);
               var segs = AC.segments(path, templates, chroma.frameDur);
               resolve({ chroma: chroma, segs: segs, templates: templates });
             }, 30);

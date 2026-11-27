@@ -64,6 +64,16 @@
     return out;
   };
 
+  /* 裁掉頭尾靜音（靜音幀的 chroma 是雜訊，會汙染辨識） */
+  AC.trimSilence = function (mono, thr) {
+    thr = thr || 0.008;
+    var s = 0, e = mono.length - 1;
+    while (s < mono.length && Math.abs(mono[s]) < thr) s++;
+    while (e > s && Math.abs(mono[e]) < thr) e--;
+    if (e <= s) return mono;
+    return mono.subarray(s, e + 1);
+  };
+
   /* ================= FFT ================= */
 
   var hannCache = {};
@@ -168,21 +178,30 @@
     return out;
   };
 
-  /* 每幀樣板比對 → 機率矩陣（frames × K） */
-  AC.templateScores = function (frames, templates) {
+  /* 每幀樣板比對 → 機率矩陣（softmax 正規化，幀內總和為 1）
+     這讓 Viterbi 的 emission 量級與轉移機率可比，log 域才不會失衡 */
+  AC.templateScores = function (frames, templates, sharpness) {
+    sharpness = sharpness || 6;
     var K = templates.length;
     var probs = [];
     frames.forEach(function (ch) {
-      var row = new Float32Array(K);
-      var best = 0;
+      var row = new Float64Array(K);
+      var maxDot = -Infinity;
+      var dots = new Float64Array(K);
       for (var t = 0; t < K; t++) {
         var v = templates[t].v;
         var dot = 0;
         for (var q = 0; q < 12; q++) dot += ch[q] * v[q];
-        // |ch|=1（已正規化）；|v| 常數，不影響相對排序
-        row[t] = dot;
-        if (dot > best) best = dot;
+        dots[t] = dot * sharpness;
+        if (dots[t] > maxDot) maxDot = dots[t];
       }
+      var sum = 0;
+      for (var t2 = 0; t2 < K; t2++) {
+        var e = Math.exp(dots[t2] - maxDot); // 數值穩定
+        row[t2] = e;
+        sum += e;
+      }
+      for (var t3 = 0; t3 < K; t3++) row[t3] /= sum;
       probs.push(row);
     });
     return probs;
@@ -191,7 +210,7 @@
   /* ================= Viterbi ================= */
 
   AC.viterbi = function (probs, templates, selfBias) {
-    selfBias = selfBias === undefined ? 0.84 : selfBias;
+    selfBias = selfBias === undefined ? 0.6 : selfBias;
     var K = templates.length, T = probs.length;
     if (!T) return [];
     // 轉移：留 = selfBias；走 = 均分（可加五度圈鄰居加權）
@@ -253,10 +272,33 @@
 
   /* ================= 分段合併 ================= */
 
+  /* 眾數濾波：把被夾在中間的孤立短段改成兩側較長段的值（半窗 w 幀） */
+  AC.modeFilter = function (path, templates, w) {
+    w = w || 2;
+    var out = path.slice();
+    for (var i = 0; i < path.length; i++) {
+      // 若與前一幀和後一幀都不同 → 候選污染幀
+      var samePrev = i > 0 && path[i - 1] === path[i];
+      var sameNext = i < path.length - 1 && path[i + 1] === path[i];
+      if (samePrev || sameNext) continue;
+      // 統計窗口內眾數（排除自己）
+      var counts = {};
+      for (var j = Math.max(0, i - w); j <= Math.min(path.length - 1, i + w); j++) {
+        if (j === i) continue;
+        counts[path[j]] = (counts[path[j]] || 0) + 1;
+      }
+      var best = -1, bestN = 0;
+      for (var k in counts) {
+        if (counts[k] > bestN) { bestN = counts[k]; best = +k; }
+      }
+      if (best >= 0 && bestN >= w) out[i] = best;
+    }
+    return out;
+  };
+
   AC.segments = function (path, templates, frameDur, opts) {
     opts = opts || {};
-    var minSec = opts.minSec || 0.55;   // 短於此的段落先併掉
-    var fillSec = opts.fillSec || 0.32; // 小夾縫用前後較常見者填補
+    var minSec = opts.minSec || 0.4; // 短於此的段落併入前一段
     var segs = [];
     var cur = { i0: 0, i1: 0, t: path[0] };
     for (var i = 1; i < path.length; i++) {
@@ -264,7 +306,7 @@
       else { segs.push(cur); cur = { i0: i, i1: i, t: path[i] }; }
     }
     segs.push(cur);
-    // 合併太短的
+    // 合併太短的（併入前一段；開頭的短段保留等下一步處理）
     var merged = [];
     segs.forEach(function (s) {
       var dur = (s.i1 - s.i0 + 1) * frameDur;
@@ -274,7 +316,7 @@
         merged.push(s);
       }
     });
-    // 填補小夾縫（前後同型才併）
+    // 合併相鄰同型
     var filled = [];
     merged.forEach(function (s) {
       if (filled.length && s.t === filled[filled.length - 1].t) {
