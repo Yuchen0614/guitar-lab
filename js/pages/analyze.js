@@ -263,50 +263,38 @@
     }
 
     function runAnalysis(buffer, algo, ext, bias) {
-      showProgress('抽取 chroma 特徵…');
-      setBar(0.05);
-      return new Promise(function (resolve) { setTimeout(resolve, 30); })
-        .then(function () {
-          var mono = AC.toMono(buffer);
-          var sr = 22050;
-          var down = AC.trimSilence(AC.downsample(mono, buffer.sampleRate, sr));
-          setBar(0.1);
-          return AC.chromaFrames(down, sr, { frameSize: 4096, hop: 2048 }, function (p) {
-            setBar(0.1 + p * 0.55);
-            document.getElementById('azProgText').textContent = 'chroma 特徵 ' + Math.round(p * 100) + '%';
-          });
-        })
-        .then(function (chroma) {
-          document.getElementById('azProgText').textContent = '和弦辨識（' + (algo === 'viterbi' ? 'Viterbi' : '樣板比對') + '）…';
-          setBar(0.7);
-          return new Promise(function (resolve) {
-            setTimeout(function () {
-              var templates = AC.templates24(ext);
-              var probs = AC.templateScores(chroma.frames, templates);
-              var raw = algo === 'viterbi' ? AC.viterbi(probs, templates, bias) : AC.argmaxPath(probs, templates);
-              var path = AC.modeFilter(raw, templates, 2);
-              var segs = AC.segments(path, templates, chroma.frameDur);
-              resolve({ chroma: chroma, segs: segs, templates: templates });
-            }, 30);
-          });
-        })
-        .then(function (out) {
-          setBar(0.95);
-          var key = AC.estimateKey(out.chroma.frames);
-          result = {
-            segs: out.segs, key: key,
-            duration: buffer.duration,
-            algo: algo === 'viterbi' ? 'Viterbi 平滑' : '樣板比對',
-            frames: out.chroma.frames.length
-          };
-          renderResult();
-          setBar(1);
-          setTimeout(hideProgress, 350);
-        })
-        .catch(function (err) {
-          hideProgress();
-          GL.toast('分析失敗：' + err.message);
-        });
+      /* 同步計算：DSP 全程 <200ms，不需要非同步切割
+        （部分自動化環境會凍結 setTimeout，同步路徑最可靠） */
+      try {
+        showProgress('計算中…');
+        setBar(0.2);
+        var mono = AC.toMono(buffer);
+        var sr = 22050;
+        var down = AC.trimSilence(AC.downsample(mono, buffer.sampleRate, sr));
+        var chroma = AC.chromaFrames(down, sr, { frameSize: 4096, hop: 2048 });
+        setBar(0.55);
+        document.getElementById('azProgText').textContent = '和弦辨識…';
+        var templates = AC.templates24(ext);
+        var probs = AC.templateScores(chroma.frames, templates);
+        var raw = algo === 'viterbi' ? AC.viterbi(probs, templates, bias) : AC.argmaxPath(probs, templates);
+        var path = AC.modeFilter(raw, templates, 2);
+        var segs = AC.segments(path, templates, chroma.frameDur);
+        setBar(0.9);
+        var key = AC.estimateKey(chroma.frames);
+        result = {
+          segs: segs, key: key,
+          duration: buffer.duration,
+          algo: algo === 'viterbi' ? 'Viterbi 平滑' : '樣板比對',
+          frames: chroma.frames.length
+        };
+        renderResult();
+        setBar(1);
+        hideProgress();
+      } catch (err) {
+        hideProgress();
+        GL.toast('分析失敗：' + err.message);
+      }
+      return Promise.resolve();
     }
 
     /* ================= 結果渲染 ================= */
