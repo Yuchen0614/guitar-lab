@@ -362,10 +362,10 @@
   AC.renderDemo = function () {
     var sr = 22050, beatDur = 0.5, barDur = beatDur * 4;
     var prog = [
-      [[36, 48, 52, 55], [64, 67]],   // C2 C3 E3 G3 + E4 G4
-      [[31, 43, 47, 50], [59, 62]],   // G1 G2 B2 D3 + B3 D4
-      [[33, 45, 48, 52], [60, 64]],   // A1 A2 C3 E3 + C4 E4
-      [[29, 41, 45, 48], [57, 60]]    // F1 F2 A2 C3 + A3 C4
+      [[48, 52, 55, 60], [64]],       // C3 E3 G3 C4 + E4
+      [[43, 47, 50, 55], [62]],       // G2 B2 D3 G3 + D4
+      [[45, 48, 52, 57], [60]],       // A2 C3 E3 A3 + C4
+      [[41, 45, 48, 53], [57]]        // F2 A2 C3 F3 + A3
     ];
     var ctx = new OfflineAudioContext(1, Math.ceil(sr * barDur * 4 + sr), sr);
     prog.forEach(function (chord, bi) {
