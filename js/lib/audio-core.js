@@ -181,7 +181,7 @@
   /* 每幀樣板比對 → 機率矩陣（softmax 正規化，幀內總和為 1）
      這讓 Viterbi 的 emission 量級與轉移機率可比，log 域才不會失衡 */
   AC.templateScores = function (frames, templates, sharpness) {
-    sharpness = sharpness || 6;
+    sharpness = sharpness || 14;
     var K = templates.length;
     var probs = [];
     frames.forEach(function (ch) {
@@ -358,27 +358,43 @@
   };
 
   /* ================= 示範音訊（離線渲染 I-V-vi-IV） ================= */
+  /* 音域選擇：低音聲部突出根音（root 加強），高音聲部用封閉位避免與鄰和弦共享過多音 */
   AC.renderDemo = function () {
     var sr = 22050, beatDur = 0.5, barDur = beatDur * 4;
     var prog = [
-      [[48, 52, 55], [60, 64, 67]],           // C: 根/三/五 + 高八度
-      [[43, 47, 50], [55, 59, 62]],           // G
-      [[45, 48, 52], [57, 60, 64]],           // Am
-      [[41, 45, 48], [53, 57, 60]]            // F
+      [[36, 48, 52, 55], [64, 67]],   // C2 C3 E3 G3 + E4 G4
+      [[31, 43, 47, 50], [59, 62]],   // G1 G2 B2 D3 + B3 D4
+      [[33, 45, 48, 52], [60, 64]],   // A1 A2 C3 E3 + C4 E4
+      [[29, 41, 45, 48], [57, 60]]    // F1 F2 A2 C3 + A3 C4
     ];
     var ctx = new OfflineAudioContext(1, Math.ceil(sr * barDur * 4 + sr), sr);
     prog.forEach(function (chord, bi) {
       var t0 = bi * barDur;
-      chord[0].concat(chord[1]).forEach(function (midi, ni) {
+      chord[0].forEach(function (midi, ni) {
         var f = M.midiToFreq(midi);
         var osc = ctx.createOscillator();
-        osc.type = ni < 3 ? 'triangle' : 'sine';
+        osc.type = 'triangle';
         osc.frequency.value = f;
         var g = ctx.createGain();
-        var t = t0 + (ni % 3) * 0.015;
+        var t = t0 + ni * 0.012;
+        var amp = ni === 0 ? 0.30 : 0.20; // 根音最強
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.22, t + 0.02);
-        g.gain.setValueAtTime(0.20, t + barDur - 0.1);
+        g.gain.exponentialRampToValueAtTime(amp, t + 0.02);
+        g.gain.setValueAtTime(amp * 0.92, t + barDur - 0.08);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + barDur);
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start(t); osc.stop(t + barDur + 0.05);
+      });
+      chord[1].forEach(function (midi, ni) {
+        var f = M.midiToFreq(midi);
+        var osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        var g = ctx.createGain();
+        var t = t0 + 0.03 + ni * 0.012;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+        g.gain.setValueAtTime(0.11, t + barDur - 0.08);
         g.gain.exponentialRampToValueAtTime(0.0001, t + barDur);
         osc.connect(g); g.connect(ctx.destination);
         osc.start(t); osc.stop(t + barDur + 0.05);
