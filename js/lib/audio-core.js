@@ -409,5 +409,38 @@
     return ctx.startRendering();
   };
 
+  /* ================= 段落分析示範音訊（A-B-A 三段結構） ================= */
+  /* 與 scripts/test-structure.js 同一組參數：A=C-G(8s) B=F-D(8s) A=C-G(8s) */
+  AC.renderDemoABA = function () {
+    var sr = 22050, segDur = 8, chordDur = 4;
+    var segs = [
+      [[48, 52, 55], [55, 59, 62]],   // A: C3 E3 G3 → G3 B3 D4
+      [[41, 45, 48], [50, 53, 57]],   // B: F2 A2 C3 → D3 F3 A3
+      [[48, 52, 55], [55, 59, 62]]    // A: 再現
+    ];
+    var ctx = new OfflineAudioContext(1, Math.ceil(sr * segDur * 3), sr);
+    segs.forEach(function (chords, si) {
+      chords.forEach(function (midis, ci) {
+        var t0 = si * segDur + ci * chordDur;
+        midis.forEach(function (midi, ni) {
+          var f = M.midiToFreq(midi);
+          var osc = ctx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.value = f;
+          var g = ctx.createGain();
+          var t = t0 + ni * 0.015;
+          var amp = ni === 0 ? 0.3 : 0.2;
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(amp, t + 0.03);
+          g.gain.setValueAtTime(amp * 0.9, t + chordDur - 0.1);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + chordDur);
+          osc.connect(g); g.connect(ctx.destination);
+          osc.start(t); osc.stop(t + chordDur + 0.05);
+        });
+      });
+    });
+    return ctx.startRendering();
+  };
+
   window.GLaudio = AC;
 })();
