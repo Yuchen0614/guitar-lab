@@ -132,11 +132,17 @@
     var re = new Float32Array(N), im = new Float32Array(N);
     // 預先算好每個 bin 的 pitch class
     var binPc = new Int8Array(N / 2);
+    var binWeight = new Float32Array(N / 2);
     for (var k = 1; k < N / 2; k++) {
       var f = k * sr / N;
       if (f < fMin || f > fMax) { binPc[k] = -1; continue; }
       var midiF = 69 + 12 * Math.log2(f / 440);
       binPc[k] = ((Math.round(midiF) % 12) + 12) % 12;
+      // 諧波抑制：低音區權重高、高音區衰減，抵銷樂器泛音把五度音灌大的效應
+      // 60Hz→1.0 線性降到 1500Hz→0.55（對數刻度）
+      var t2 = (Math.log2(f) - Math.log2(60)) / (Math.log2(1500) - Math.log2(60));
+      t2 = Math.max(0, Math.min(1, t2));
+      binWeight[k] = 1.0 - 0.45 * t2;
     }
     var total = Math.max(0, Math.floor((mono.length - N) / hop));
     for (var start = 0; start + N <= mono.length; start += hop) {
@@ -147,7 +153,7 @@
         var pc = binPc[k2];
         if (pc < 0) continue;
         var mag = Math.sqrt(re[k2] * re[k2] + im[k2] * im[k2]);
-        ch[pc] += Math.sqrt(mag); // 壓縮動態範圍
+        ch[pc] += Math.sqrt(mag) * binWeight[k2]; // 壓縮動態範圍 + 低音加權
       }
       // L2 正規化
       var s = 0;
@@ -373,11 +379,11 @@
       chord[0].forEach(function (midi, ni) {
         var f = M.midiToFreq(midi);
         var osc = ctx.createOscillator();
-        osc.type = 'triangle';
+        osc.type = 'sine'; // 純音：諧波會被 chroma 誤讀成其他和弦音
         osc.frequency.value = f;
         var g = ctx.createGain();
         var t = t0 + ni * 0.012;
-        var amp = ni === 0 ? 0.30 : 0.20; // 根音最強
+        var amp = ni === 0 ? 0.32 : 0.22; // 根音最強
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(amp, t + 0.02);
         g.gain.setValueAtTime(amp * 0.92, t + barDur - 0.08);
