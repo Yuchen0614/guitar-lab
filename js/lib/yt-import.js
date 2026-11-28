@@ -117,9 +117,12 @@
         return Promise.resolve({
           ok: false,
           code: 'all-instances-failed',
-          classified: { kind: 'all-failed', title: '所有實例都無法使用',
-            msg: '試過 ' + endpoints.length + ' 個實例都失敗。目前公共 cobalt 實例全面要求認證（人機驗證或 Api-Key）。' +
-              (apiKey ? '你已填 Api-Key——請確認 key 是否有效、實例是否支援 Api-Key 認證。' : '最快解法：自架實例（docker 一行指令）或取得 Api-Key 後填入「進階設定」。') + ' 或改用上傳檔案。' }
+          classified: {
+            kind: 'all-failed',
+            title: '所有實例都無法使用',
+            msg: '試過 ' + endpoints.length + ' 個實例都失敗。目前公共 cobalt 實例全面要求認證（人機驗證或 Api-Key），本站域名無法代你通過驗證。',
+            steps: YT.selfHostSteps(apiKey ? '已填 Api-Key——請確認 key 有效性與實例是否支援 Api-Key。' : null)
+          }
         });
       }
       var ep = endpoints[idx++];
@@ -165,6 +168,47 @@
         });
       }
       return pump();
+    });
+  };
+
+  /* 自架指引：三步行動清單（指令可複製） */
+  YT.selfHostSteps = function (note) {
+    var steps = [
+      { t: '1 · 在你的電腦跑 cobalt（擇一）',
+        cmd: 'docker run -d --name cobalt -p 9000:9000 -e API_URL=http://localhost:9000/ -e CORS_WILDCARD=1 ghcr.io/imputnet/cobalt:11',
+        alt: '沒有 Docker：安裝 Node.js 18+ 與 pnpm 後——git clone https://github.com/imputnet/cobalt && cd cobalt/api && pnpm install && API_URL=http://localhost:9000/ pnpm start' },
+      { t: '2 · 把位址填進「進階設定」',
+        cmd: 'http://localhost:9000',
+        alt: '在「和弦分析」頁 → YouTube 來源 → 進階設定 → 實例位址欄貼上' },
+      { t: '3 · 回來貼 YouTube 連結，完成',
+        cmd: null,
+        alt: '音訊只經過你自己的電腦，不下傳任何第三方。若瀏覽器封鎖本機連線，改用上傳檔案一樣可以分析。' }
+    ];
+    if (note) steps.unshift({ t: note, cmd: null, alt: null });
+    return steps;
+  };
+
+  /* 行動清單 UI：插入 container，含複製按鈕 */
+  YT.renderSteps = function (container, steps) {
+    var html = '<div class="yt-steps">';
+    steps.forEach(function (s) {
+      html += '<div class="yt-step"><strong>' + s.t + '</strong>';
+      if (s.cmd) {
+        html += '<div class="yt-cmd-row"><code class="yt-cmd">' + s.cmd + '</code>' +
+          '<button class="btn btn-ghost btn-sm yt-copy" data-cmd="' + s.cmd.replace(/"/g, '&quot;') + '">複製</button></div>';
+      }
+      if (s.alt) html += '<p class="hint">' + s.alt + '</p>';
+      html += '</div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+    container.querySelectorAll('.yt-copy').forEach(function (b) {
+      b.addEventListener('click', function () {
+        navigator.clipboard.writeText(b.dataset.cmd).then(function () {
+          b.textContent = '✓ 已複製';
+          setTimeout(function () { b.textContent = '複製'; }, 2000);
+        });
+      });
     });
   };
 

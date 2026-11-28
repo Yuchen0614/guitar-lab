@@ -76,6 +76,7 @@
             '<input type="url" id="soYtUrl" class="text-input" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false">' +
             '<p class="hint">與和弦分析共用 cobalt 設定（實例 + Api-Key，在「和弦分析」頁填）。</p>' +
             '<button class="btn btn-primary btn-block" id="soYtGo" style="margin-top:10px">從 YouTube 匯入並分析</button>' +
+            '<div class="yt-help" id="soYtHelp" hidden></div>' +
           '</div>' +
           '<div class="progress-wrap" id="soImportProg" hidden>' +
             '<div class="progress-bar"><div class="progress-fill" id="soImportFill"></div></div>' +
@@ -487,7 +488,15 @@
         if (!r.ok) {
           hideImport();
           btn.disabled = false;
-          GL.toast(r.classified.title + '：' + r.classified.msg, 6000);
+          var box = document.getElementById('soYtHelp');
+          if (box && r.classified.steps) {
+            box.hidden = false;
+            box.innerHTML = '<strong>' + r.classified.title + '</strong><p class="hint">' + r.classified.msg + '</p>';
+            YT.renderSteps(box, r.classified.steps);
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          } else {
+            GL.toast(r.classified.title + '：' + r.classified.msg, 6000);
+          }
           return;
         }
         return YT.downloadAudio(r.url, showImport).then(function (ab) {

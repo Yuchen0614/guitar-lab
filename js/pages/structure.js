@@ -50,6 +50,7 @@
             '<input type="url" id="stYtUrl" class="text-input" placeholder="https://www.youtube.com/watch?v=..." spellcheck="false">' +
             '<p class="hint">與和弦分析共用 cobalt 設定（實例位址 + Api-Key，在「和弦分析」頁的進階設定裡填）。下載後只在本機分析。</p>' +
             '<button class="btn btn-primary btn-block" id="stYtGo" style="margin-top:10px">從 YouTube 匯入</button>' +
+            '<div class="yt-help" id="stYtHelp" hidden></div>' +
           '</div>' +
           '<div class="src-pane" id="stDemo" hidden>' +
             '<p class="hint" style="font-size:.9rem">內建合成示範：A(8s)–B(8s)–A(8s) 三段結構（C–G / F–D / C–G）。用它快速確認段落偵測，再拿真實歌曲來挑戰。</p>' +
@@ -183,7 +184,15 @@
         if (!r.ok) {
           hideProgress();
           btn.disabled = false;
-          GL.toast(r.classified.title + '：' + r.classified.msg, 6000);
+          var box = document.getElementById('stYtHelp');
+          if (box && r.classified.steps) {
+            box.hidden = false;
+            box.innerHTML = '<strong>' + r.classified.title + '</strong><p class="hint">' + r.classified.msg + '</p>';
+            YT.renderSteps(box, r.classified.steps);
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          } else {
+            GL.toast(r.classified.title + '：' + r.classified.msg, 6000);
+          }
           return;
         }
         return YT.downloadAudio(r.url, showProgress).then(function (ab) {

@@ -51,6 +51,7 @@
               '<p class="hint">自架：<code>docker run -p 28818:28818 ghcr.io/imputnet/cobalt:11</code>（API 設定檔允許你的 github.io 來源）；或向公共實例主申請 Api-Key。key 只存在你的瀏覽器 localStorage。</p>' +
             '</details>' +
             '<button class="btn btn-primary btn-block" id="azYtGo" style="margin-top:10px">從 YouTube 匯入</button>' +
+            '<div class="yt-help" id="azYtHelp" hidden></div>' +
           '</div>' +
 
           '<div class="src-pane" id="srcDemo" hidden>' +
@@ -187,7 +188,15 @@
         if (!r.ok) {
           hideProgress();
           btn.disabled = false;
-          GL.toast(r.classified.title + '：' + r.classified.msg, 6000);
+          var box = document.getElementById('azYtHelp');
+          if (box && r.classified.steps) {
+            box.hidden = false;
+            box.innerHTML = '<strong>' + r.classified.title + '</strong><p class="hint">' + r.classified.msg + '</p>';
+            YT.renderSteps(box, r.classified.steps);
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          } else {
+            GL.toast(r.classified.title + '：' + r.classified.msg, 6000);
+          }
           return;
         }
         return YT.downloadAudio(r.url, showProgress).then(function (ab) {
