@@ -65,35 +65,40 @@
      回傳 { ok: true, url } 或 { ok: false, code, classified }
      用 XMLHttpRequest 的內建 timeout（不依賴 JS 定時器，各種環境都會準時觸發） */
   function requestInstance(endpoint, apiKey, videoUrl, timeoutMs) {
-    return new Promise(function (resolve) {
-      var xhr = new XMLHttpRequest();
-      xhr.open('POST', endpoint + '/', true);
-      xhr.timeout = timeoutMs || 20000;
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Accept', 'application/json');
-      if (apiKey) xhr.setRequestHeader('Authorization', 'Api-Key ' + apiKey);
-      xhr.onload = function () {
-        var j = null;
-        try { j = JSON.parse(xhr.responseText); } catch (e) { /* non-json */ }
+    var headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+    if (apiKey) headers['Authorization'] = 'Api-Key ' + apiKey;
+    var body = JSON.stringify({
+      url: videoUrl,
+      downloadMode: 'audio',
+      audioFormat: 'mp3',
+      filenameStyle: 'basic'
+    });
+    function handle(resp) {
+      return resp.json().catch(function () { return null; }).then(function (j) {
         if (j && (j.status === 'stream' || j.status === 'redirect' || j.status === 'tunnel')) {
-          resolve({ ok: true, url: j.url });
-          return;
+          return { ok: true, url: j.url };
         }
-        var code = (j && j.error && j.error.code) || 'http-' + xhr.status;
-        resolve({ ok: false, code: code, classified: classifyError(code) });
-      };
-      xhr.onerror = function () {
-        resolve({ ok: false, code: 'network', classified: { kind: 'network', title: '連線失敗', msg: '無法連上 ' + endpoint } });
-      };
-      xhr.ontimeout = function () {
-        resolve({ ok: false, code: 'timeout', classified: { kind: 'timeout', title: '實例逾時', msg: endpoint + ' 在 20 秒內沒有回應' } });
-      };
-      xhr.send(JSON.stringify({
-        url: videoUrl,
-        downloadMode: 'audio',
-        audioFormat: 'mp3',
-        filenameStyle: 'basic'
-      }));
+        var code = (j && j.error && j.error.code) || 'http-' + resp.status;
+        return { ok: false, code: code, classified: classifyError(code) };
+      });
+    }
+    function fail(kind, title, msg) {
+      return { ok: false, code: kind, classified: { kind: kind, title: title, msg: msg } };
+    }
+    /* Chrome 142+ 的 Local Network Access：連本機實例需要使用者授權。
+       targetAddressSpace:'local' 讓 Chrome 走「本機請求」路徑（觸發權限提示），
+       其他瀏覽器會忽略此選項，行為不變。 */
+    var opts = { method: 'POST', headers: headers, body: body, signal: AbortSignal.timeout(timeoutMs || 20000) };
+    var isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/.test(endpoint);
+    if (isLocal) opts.targetAddressSpace = 'local';
+    return fetch(endpoint + '/', opts).then(handle).catch(function (e) {
+      if (e && e.name === 'TimeoutError') {
+        return fail('timeout', '實例逾時', endpoint + ' 在 20 秒內沒有回應');
+      }
+      if (e && e.name === 'AbortError') {
+        return fail('timeout', '實例逾時', endpoint + ' 請求被中斷');
+      }
+      return fail('network', '連線失敗', '無法連上 ' + endpoint + '（若剛填入本機位址，請注意瀏覽器的「連線本機網路」權限提示並按允許）');
     });
   }
 
@@ -145,7 +150,7 @@
   YT.downloadAudio = function (tunnelUrl, onStatus) {
     onStatus = onStatus || function () {};
     onStatus('下載音訊中…');
-    return fetch(tunnelUrl).then(function (resp) {
+    return fetch(tunnelUrl, { targetAddressSpace: 'local' }).then(function (resp) {
       if (!resp.ok) throw new Error('下載失敗（HTTP ' + resp.status + '）');
       // 讀取 content-length 顯示進度（若有）
       var total = +(resp.headers.get('content-length') || 0);
